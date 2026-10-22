@@ -4,7 +4,7 @@ T1. Project skeleton — DONE
 - Create the Android project, dependencies, package structure and manifest permissions per CLAUDE.md.
 - Done when: app builds, launches to an empty MainScreen, and a placeholder unit test passes.
 
-T2. Pure logic with tests
+T2. Pure logic with tests — DONE
 - Implement NumberNormalizer, MessageFormatter, loop check, idempotency key, time-window filter, retry/status transitions. (R2, R4, R5, R7)
 - Done when: unit tests for each pass, including edge cases (emoji, empty body, numbers with spaces and +91).
 
