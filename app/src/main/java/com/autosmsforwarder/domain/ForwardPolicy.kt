@@ -6,6 +6,7 @@ data class ForwardSettings(val targetNumber: String)
 
 enum class ForwardStatus {
     PENDING,
+    SENDING,
     SENT,
     FAILED,
     SKIPPED_LOOP

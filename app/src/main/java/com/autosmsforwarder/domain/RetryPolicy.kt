@@ -10,6 +10,11 @@ class RetryPolicy {
     private val maxAttempts = 3
     private val baseBackoffMillis = 30_000L
 
+    fun beginOrResumeSend(currentStatus: ForwardStatus): ForwardStatus? = when (currentStatus) {
+        ForwardStatus.PENDING, ForwardStatus.SENDING -> ForwardStatus.SENDING
+        ForwardStatus.SENT, ForwardStatus.FAILED, ForwardStatus.SKIPPED_LOOP -> null
+    }
+
     fun afterAttempt(completedAttempts: Int, succeeded: Boolean): SendTransition {
         require(completedAttempts in 1..maxAttempts)
         return when {

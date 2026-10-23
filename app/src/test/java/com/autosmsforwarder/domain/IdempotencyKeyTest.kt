@@ -7,21 +7,31 @@ import org.junit.Test
 
 class IdempotencyKeyTest {
     @Test
-    fun identicalMessageHasStableOpaqueKey() {
-        val first = IdempotencyKey.create("+919876543210", 123L, "नमस्ते 👋")
-        val duplicate = IdempotencyKey.create("+919876543210", 123L, "नमस्ते 👋")
+    fun identicalMessageHasStableKeyFromNormalizedSenderAndSmsTimestamp() {
+        val first = IdempotencyKey.create("98765 43210", 123L, "नमस्ते 👋")
+        val identicalInputs = IdempotencyKey.create("98765 43210", 123L, "नमस्ते 👋")
+        val duplicate = IdempotencyKey.create("+91 (98765) 43210", 123L, "नमस्ते 👋")
 
+        assertEquals(first, identicalInputs)
         assertEquals(first, duplicate)
+        assertEquals("dbc63828d2e34b9129e1f09c50e9b27d675a9f8838b50f2cd3a31e6b7adc0819", first)
         assertEquals(64, first.length)
         assertFalse(first.contains("9876543210"))
     }
 
     @Test
-    fun changingAnyIdentityFieldChangesKey() {
+    fun identicalBodiesWithDifferentSmsTimestampsHaveDifferentKeys() {
+        assertNotEquals(
+            IdempotencyKey.create("+919876543210", 456L, "hello"),
+            IdempotencyKey.create("+919876543210", 457L, "hello")
+        )
+    }
+
+    @Test
+    fun changingSenderOrBodyChangesKey() {
         val original = IdempotencyKey.create("123", 456L, "hello")
 
         assertNotEquals(original, IdempotencyKey.create("124", 456L, "hello"))
-        assertNotEquals(original, IdempotencyKey.create("123", 457L, "hello"))
         assertNotEquals(original, IdempotencyKey.create("123", 456L, "hello!"))
     }
 

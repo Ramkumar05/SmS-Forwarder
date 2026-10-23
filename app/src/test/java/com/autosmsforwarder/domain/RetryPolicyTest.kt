@@ -1,11 +1,25 @@
 package com.autosmsforwarder.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class RetryPolicyTest {
     private val policy = RetryPolicy()
+
+    @Test
+    fun pendingOrStuckSendingRowCanBeginSending() {
+        assertEquals(ForwardStatus.SENDING, policy.beginOrResumeSend(ForwardStatus.PENDING))
+        assertEquals(ForwardStatus.SENDING, policy.beginOrResumeSend(ForwardStatus.SENDING))
+    }
+
+    @Test
+    fun alreadySentOrTerminalRowIsNeverSentAgain() {
+        assertNull(policy.beginOrResumeSend(ForwardStatus.SENT))
+        assertNull(policy.beginOrResumeSend(ForwardStatus.FAILED))
+        assertNull(policy.beginOrResumeSend(ForwardStatus.SKIPPED_LOOP))
+    }
 
     @Test
     fun firstTwoFailuresRemainPendingWithExponentialDelays() {
