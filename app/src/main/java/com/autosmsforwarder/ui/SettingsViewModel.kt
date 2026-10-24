@@ -1,0 +1,73 @@
+package com.autosmsforwarder.ui
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.work.WorkManager
+import com.autosmsforwarder.data.ForwardDatabase
+import com.autosmsforwarder.data.ForwardRepository
+import com.autosmsforwarder.settings.SendDelay
+import com.autosmsforwarder.settings.SettingsRepository
+import com.autosmsforwarder.settings.TargetNumberValidator
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+data class SettingsUiState(
+    val targetNumber: String = "",
+    val sendDelay: SendDelay = SendDelay.INSTANT,
+    val error: String? = null,
+    val saved: Boolean = false
+)
+
+class SettingsViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = SettingsRepository(application)
+    private val forwardRepository = ForwardRepository(ForwardDatabase.get(application))
+    private val mutableState = MutableStateFlow(SettingsUiState())
+    val state: StateFlow<SettingsUiState> = mutableState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.settings.collect { settings ->
+                mutableState.value = mutableState.value.copy(
+                    targetNumber = settings.targetNumber,
+                    sendDelay = settings.sendDelay
+                )
+            }
+        }
+    }
+
+    fun setTargetNumber(value: String) {
+        mutableState.value = mutableState.value.copy(targetNumber = value, error = null, saved = false)
+    }
+
+    fun setSendDelay(value: SendDelay) {
+        mutableState.value = mutableState.value.copy(sendDelay = value, saved = false)
+    }
+
+    fun save() {
+        val current = mutableState.value
+        if (!TargetNumberValidator.isValid(current.targetNumber)) {
+            mutableState.value = current.copy(error = "Enter 10–15 digits, with an optional leading +", saved = false)
+            return
+        }
+        viewModelScope.launch {
+            repository.saveTargetAndDelay(current.targetNumber, current.sendDelay)
+            mutableState.value = mutableState.value.copy(error = null, saved = true)
+        }
+    }
+
+    fun clearLog() {
+        viewModelScope.launch {
+            val pendingKeys = forwardRepository.clearLog()
+            withContext(Dispatchers.IO) {
+                pendingKeys.forEach { key ->
+                    WorkManager.getInstance(getApplication()).cancelUniqueWork("fwd-$key").result.get()
+                }
+            }
+        }
+    }
+}

@@ -30,7 +30,8 @@ R4. Loop prevention
 R5. Retry
 - Given a send fails, then it is retried up to 3 times with exponential backoff starting at 30 seconds.
 - Given all attempts fail, then the log status becomes FAILED. Given a send succeeds, status becomes SENT.
-- A message must never be forwarded twice for the same incoming SMS (idempotent by sender + receive time + body hash).
+- Duplicate delivery of the same incoming SMS must not schedule a second forward (idempotent by normalized sender + SMS timestamp + body hash). If the phone dies after sending but before recording SENT, a retry may send it again; this rare duplicate is accepted so the message is not lost.
+- After the user explicitly clears the log, prior deduplication history is erased. If Android redelivers that same SMS afterward, it may be forwarded again.
 
 R6. Forward log
 - Each handled message creates one log row: id, receivedAt, sender, snippet (first 100 characters), status (PENDING, SENT, FAILED, SKIPPED_LOOP), attempts, lastUpdatedAt.
@@ -60,7 +61,7 @@ R10. Reliability
 - DEFAULT: no foreground service in V1. Add one only if real-device testing shows missed messages.
 
 R11. Privacy
-- Satisfy every Hard rule in CLAUDE.md. A "Clear log" action deletes all log rows.
+- Satisfy every Hard rule in CLAUDE.md. A "Clear log" action deletes all log rows, cancels pending forwards, and deletes their stored bodies.
 
 ## SIM handling
 DEFAULT: send using the system's default SMS subscription. Dual-SIM selection is out of scope for V1 but must not be blocked by the design.
