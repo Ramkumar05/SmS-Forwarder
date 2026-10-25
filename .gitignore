@@ -4,3 +4,5 @@
 local.properties
 signing/
 *.iml
+/sms-archive-cloudflare/
+.pnpm-store/
