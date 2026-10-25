@@ -17,7 +17,8 @@ data class AppSettings(
     val targetNumber: String = "",
     val forwardingEnabled: Boolean = true,
     val sendDelay: SendDelay = SendDelay.INSTANT,
-    val onboardingCompleted: Boolean = false
+    val onboardingCompleted: Boolean = false,
+    val archiveWriteToken: String = ""
 )
 
 class SettingsRepository(private val store: DataStore<Preferences>) {
@@ -28,7 +29,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             targetNumber = preferences[TARGET_NUMBER].orEmpty(),
             forwardingEnabled = preferences[ENABLED] ?: true,
             sendDelay = SendDelay.fromSeconds(preferences[DELAY_SECONDS] ?: 0),
-            onboardingCompleted = preferences[ONBOARDING_COMPLETED] ?: false
+            onboardingCompleted = preferences[ONBOARDING_COMPLETED] ?: false,
+            archiveWriteToken = preferences[ARCHIVE_WRITE_TOKEN].orEmpty()
         )
     }
 
@@ -38,6 +40,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             preferences[TARGET_NUMBER] = canonical
             preferences[DELAY_SECONDS] = delay.seconds
         }
+    }
+
+    suspend fun saveArchiveWriteToken(token: String) {
+        store.edit { preferences -> preferences[ARCHIVE_WRITE_TOKEN] = token.trim() }
     }
 
     suspend fun setForwardingEnabled(enabled: Boolean) {
@@ -53,5 +59,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         private val ENABLED = booleanPreferencesKey("forwarding_enabled")
         private val DELAY_SECONDS = longPreferencesKey("send_delay_seconds")
         private val ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        private val ARCHIVE_WRITE_TOKEN = stringPreferencesKey("archive_write_token")
     }
 }

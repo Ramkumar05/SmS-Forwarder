@@ -5,7 +5,7 @@ When an SMS arrives on this phone, forward it to a configured number within seco
 
 ## Non-goals
 - No Google Play compliance work, no default-SMS-app features, no reading old messages.
-- No cloud backend, no accounts, no network features.
+- No cloud backend, accounts, or network features in V1; V1.1 adds the personal Cloudflare archive below.
 - No MMS, RCS, or media forwarding.
 - No tablet or landscape-specific layouts in V1.
 
@@ -65,3 +65,11 @@ R11. Privacy
 
 ## SIM handling
 DEFAULT: send using the system's default SMS subscription. Dual-SIM selection is out of scope for V1 but must not be blocked by the design.
+
+## V1.1: Personal cloud archive
+
+- After Android reports a forwarded SMS as sent, queue its sender, complete original body, SMS timestamp, and dedupe key for upload to the private Cloudflare archive. Do not upload failed sends or loop-skipped messages.
+- The archive is optional: a blank write token leaves V1 forwarding unchanged. The write token is entered in Settings and is never committed to source control.
+- Keep queued bodies in app-private Room storage until the API returns success. Retry network and server failures with WorkManager network constraints. Re-enqueue stored uploads after app restart and through a periodic sweep.
+- The API uses the existing dedupe key to make retries idempotent. SMS forwarding must not be retried merely because the cloud upload failed.
+- Clear log deletes all local pending upload bodies and cancels their work. It does not delete messages already stored in Cloudflare.

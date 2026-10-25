@@ -9,6 +9,7 @@ import com.autosmsforwarder.data.ForwardRepository
 import com.autosmsforwarder.settings.SendDelay
 import com.autosmsforwarder.settings.SettingsRepository
 import com.autosmsforwarder.settings.TargetNumberValidator
+import com.autosmsforwarder.worker.ArchiveScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -19,6 +20,8 @@ import kotlinx.coroutines.withContext
 data class SettingsUiState(
     val targetNumber: String = "",
     val sendDelay: SendDelay = SendDelay.INSTANT,
+    val archiveWriteToken: String = "",
+    val pendingUploads: Int = 0,
     val error: String? = null,
     val saved: Boolean = false
 )
@@ -34,8 +37,14 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             repository.settings.collect { settings ->
                 mutableState.value = mutableState.value.copy(
                     targetNumber = settings.targetNumber,
-                    sendDelay = settings.sendDelay
+                    sendDelay = settings.sendDelay,
+                    archiveWriteToken = settings.archiveWriteToken
                 )
+            }
+        }
+        viewModelScope.launch {
+            ForwardDatabase.get(application).uploadDao().pendingCount().collect { count ->
+                mutableState.value = mutableState.value.copy(pendingUploads = count)
             }
         }
     }
@@ -48,6 +57,10 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         mutableState.value = mutableState.value.copy(sendDelay = value, saved = false)
     }
 
+    fun setArchiveWriteToken(value: String) {
+        mutableState.value = mutableState.value.copy(archiveWriteToken = value, saved = false)
+    }
+
     fun save() {
         val current = mutableState.value
         if (!TargetNumberValidator.isValid(current.targetNumber)) {
@@ -56,6 +69,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         }
         viewModelScope.launch {
             repository.saveTargetAndDelay(current.targetNumber, current.sendDelay)
+            repository.saveArchiveWriteToken(current.archiveWriteToken)
+            if (current.archiveWriteToken.isNotBlank()) ArchiveScheduler.sweepNow(getApplication())
             mutableState.value = mutableState.value.copy(error = null, saved = true)
         }
     }
@@ -66,6 +81,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             withContext(Dispatchers.IO) {
                 pendingKeys.forEach { key ->
                     WorkManager.getInstance(getApplication()).cancelUniqueWork("fwd-$key").result.get()
+                    WorkManager.getInstance(getApplication()).cancelUniqueWork("archive-$key").result.get()
                 }
             }
         }

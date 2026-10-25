@@ -40,3 +40,9 @@ Incoming SMS -> SmsReceiver (manifest-registered, SMS_RECEIVED) -> parse and sti
 - Worker tests with TestListenableWorkerBuilder and a fake SmsSender.
 - Manual: emulator SMS injection with `adb emu sms send <sender> <text>`, then real-device verification per section 7 of the kit.
 - Dedupe and privacy tests: same broadcast twice -> one forward; two identical bodies with different SMS timestamps -> two forwards; worker re-run after SENT -> no second send; concurrent inserts of the same key -> one row; pending_forward row deleted after SENT and after final FAILED; body never present in WorkManager input Data; stale pending_forward rows purged after 24 hours; forward_log never holds more than 100 characters of body.
+
+## V1.1 cloud archive
+
+After a confirmed SMS send, `ForwardRepository.complete` changes the log to SENT, copies the original body to `upload_outbox`, and removes `pending_forward` in one Room transaction. `ArchiveWorker` sends only the dedupe key through WorkManager data, loads the body from Room, and posts to the private Cloudflare API with the user-entered write token. A 200 or 201 response deletes the outbox row. Network errors, timeouts, rate limits, and server errors retry; client errors leave the row for inspection and the periodic sweep. The API's idempotency key makes repeated posts safe. The upload result does not change the SMS send status.
+
+`MIGRATION_1_2` adds the outbox table without changing V1 log or pending rows. A periodic sweep and a startup sweep re-enqueue stored uploads after process death or reboot. Settings shows the number of waiting uploads and lets the user clear all local rows. Clearing the log cancels pending forward and upload work for those rows. The write token is saved in app-private DataStore; Android backup remains disabled.

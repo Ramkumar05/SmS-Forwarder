@@ -13,6 +13,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.autosmsforwarder.domain.ForwardStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -30,6 +32,15 @@ data class ForwardLogEntity(
 
 @Entity(tableName = "pending_forward")
 data class PendingForwardEntity(
+    @PrimaryKey val dedupeKey: String,
+    val sender: String,
+    val smsTimestamp: Long,
+    val body: String,
+    val createdAt: Long
+)
+
+@Entity(tableName = "upload_outbox")
+data class UploadOutboxEntity(
     @PrimaryKey val dedupeKey: String,
     val sender: String,
     val smsTimestamp: Long,
@@ -88,26 +99,54 @@ interface PendingForwardDao {
     suspend fun deleteOlderThan(cutoff: Long)
 }
 
+@Dao
+interface UploadOutboxDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(row: UploadOutboxEntity): Long
+
+    @Query("SELECT * FROM upload_outbox WHERE dedupeKey = :key LIMIT 1")
+    suspend fun find(key: String): UploadOutboxEntity?
+
+    @Query("SELECT dedupeKey FROM upload_outbox")
+    suspend fun allKeys(): List<String>
+
+    @Query("SELECT COUNT(*) FROM upload_outbox")
+    fun pendingCount(): Flow<Int>
+
+    @Query("DELETE FROM upload_outbox WHERE dedupeKey = :key")
+    suspend fun delete(key: String)
+
+    @Query("DELETE FROM upload_outbox")
+    suspend fun deleteAll()
+}
+
 class ForwardStatusConverter {
     @TypeConverter fun toDatabase(status: ForwardStatus): String = status.name
     @TypeConverter fun fromDatabase(value: String): ForwardStatus = ForwardStatus.valueOf(value)
 }
 
-@Database(entities = [ForwardLogEntity::class, PendingForwardEntity::class], version = 1, exportSchema = false)
+@Database(entities = [ForwardLogEntity::class, PendingForwardEntity::class, UploadOutboxEntity::class], version = 2, exportSchema = false)
 @TypeConverters(ForwardStatusConverter::class)
 abstract class ForwardDatabase : RoomDatabase() {
     abstract fun logDao(): ForwardLogDao
     abstract fun pendingDao(): PendingForwardDao
+    abstract fun uploadDao(): UploadOutboxDao
 
     companion object {
         @Volatile private var instance: ForwardDatabase? = null
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS `upload_outbox` (`dedupeKey` TEXT NOT NULL, `sender` TEXT NOT NULL, `smsTimestamp` INTEGER NOT NULL, `body` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`dedupeKey`))")
+            }
+        }
 
         fun get(context: Context): ForwardDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 ForwardDatabase::class.java,
                 "forwarding.db"
-            ).build().also { instance = it }
+            ).addMigrations(MIGRATION_1_2).build().also { instance = it }
         }
     }
 }

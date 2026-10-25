@@ -19,11 +19,11 @@ A personal Android app that forwards every incoming SMS to one configured phone 
 ## Hard rules
 - Never log SMS bodies or phone numbers to Logcat or crash reports.
 - The log table (forward_log) stores only the first 100 characters of a body, never the full text.
-- The full body may be persisted ONLY in the transient pending_forward table (app-private Room database), only until the message reaches a terminal status (SENT or FAILED). It is deleted in the same transaction as that status update. A safety purge deletes any pending_forward row older than 24 hours.
+- The full body may be persisted in the transient pending_forward table until SMS sending reaches SENT or FAILED. A safety purge deletes any pending_forward row older than 24 hours. When cloud archiving is configured and sending reaches SENT, the body moves in the same transaction to the app-private upload_outbox table. The outbox body is deleted only after the API acknowledges it or the user clears the local log.
 - The full body must never go into WorkManager input Data, Logcat, crash reports, notifications, or files.
-- No INTERNET permission. No analytics, no network calls, no third-party SDKs that phone home.
+- INTERNET permission is only for posting sent SMS messages to the configured first-party Cloudflare archive. No analytics or third-party SDKs that phone home.
 - Set android:allowBackup="false".
-- Declare only RECEIVE_SMS, SEND_SMS, POST_NOTIFICATIONS, and REQUEST_IGNORE_BATTERY_OPTIMIZATIONS in the app manifest. WorkManager's merged WAKE_LOCK, ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE, and private receiver permission are allowed. Do not request READ_SMS.
+- Declare only RECEIVE_SMS, SEND_SMS, INTERNET, POST_NOTIFICATIONS, and REQUEST_IGNORE_BATTERY_OPTIMIZATIONS in the app manifest. WorkManager's merged WAKE_LOCK, ACCESS_NETWORK_STATE, RECEIVE_BOOT_COMPLETED, FOREGROUND_SERVICE, and private receiver permission are allowed. Do not request READ_SMS.
 - Do not add features that are not in specs/requirements.md. If something seems missing, ask.
 
 ## Working agreement

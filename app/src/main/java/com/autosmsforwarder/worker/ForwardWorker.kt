@@ -31,7 +31,8 @@ class ForwardWorker(
     override suspend fun doWork(): Result {
         val key = inputData.getString(KEY_DEDUPE) ?: return Result.failure()
         val pending = repository.beginOrResume(key) ?: return Result.success()
-        val currentTarget = targetNumber ?: SettingsRepository(applicationContext).settings.first().targetNumber
+        val settings = SettingsRepository(applicationContext).settings.first()
+        val currentTarget = targetNumber ?: settings.targetNumber
         if (currentTarget.isBlank()) {
             repository.complete(key, ForwardStatus.FAILED)
             return Result.failure()
@@ -48,7 +49,8 @@ class ForwardWorker(
             false
         }
         if (sent) {
-            repository.complete(key, ForwardStatus.SENT)
+            val queued = repository.complete(key, ForwardStatus.SENT, settings.archiveWriteToken.isNotBlank())
+            if (queued) ArchiveScheduler.enqueue(applicationContext, key)
             return Result.success()
         }
 

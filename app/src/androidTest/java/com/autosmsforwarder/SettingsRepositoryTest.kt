@@ -29,6 +29,7 @@ class SettingsRepositoryTest {
             assertEquals(false, first.settings.first().onboardingCompleted)
             first.saveTargetAndDelay("9876543210", SendDelay.THIRTY_SECONDS)
             first.setForwardingEnabled(false)
+            first.saveArchiveWriteToken("  test-write-token  ")
             first.markOnboardingCompleted()
             firstScope.cancel()
             firstScope.coroutineContext[Job]?.join()
@@ -39,6 +40,7 @@ class SettingsRepositoryTest {
                 assertEquals("+919876543210", second.settings.first().targetNumber)
                 assertEquals(SendDelay.THIRTY_SECONDS, second.settings.first().sendDelay)
                 assertEquals(false, second.settings.first().forwardingEnabled)
+                assertEquals("test-write-token", second.settings.first().archiveWriteToken)
                 assertEquals(true, second.settings.first().onboardingCompleted)
                 assertThrows(IllegalArgumentException::class.java) {
                     runBlocking { second.saveTargetAndDelay("123", SendDelay.INSTANT) }

@@ -79,6 +79,21 @@ class ForwardRepositoryTest {
         assertEquals(2, database.logDao().count())
     }
 
+    @Test fun sentMessageMovesToUploadOutboxAndClearLogRemovesIt() = runBlocking {
+        val message = IncomingMessage("+919876543210", "full private body", 1_800_000_000_000L)
+        val key = repository.recordIfNew(message, "+15551234567")!!.dedupeKey
+        repository.beginOrResume(key)
+
+        assertTrue(repository.complete(key, ForwardStatus.SENT, archiveAfterSend = true))
+        assertNull(database.pendingDao().find(key))
+        assertEquals(message.body, repository.findUpload(key)?.body)
+        assertEquals(ForwardStatus.SENT, repository.findLog(key)?.status)
+
+        assertEquals(listOf(key), repository.clearLog())
+        assertNull(repository.findUpload(key))
+        assertNull(repository.findLog(key))
+    }
+
     @Test fun clearLogDeletesEveryRowAndPendingBodyAndReturnsWorkToCancel() = runBlocking {
         val pending = repository.recordIfNew(
             IncomingMessage("+919876543210", "pending private body", 1_800_000_000_001L),

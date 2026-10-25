@@ -39,3 +39,7 @@ T9. Hardening and privacy — DONE
 T10. End-to-end verification — DONE
 - Produce a release APK and a short test report against the real-phone checklist.
 - Done when: every checklist item has a pass/fail recorded.
+
+T11. V1.1 cloud archive upload — DONE
+- Move the full body into an upload outbox after a confirmed SMS send, add WorkManager network retries, and connect Settings to the private Cloudflare Worker.
+- Done when Room migration preserves V1 data, forwarding remains independent of upload failures, duplicate uploads are safe, queued bodies survive reboot, Clear log removes local queued bodies, and tests/build pass.
