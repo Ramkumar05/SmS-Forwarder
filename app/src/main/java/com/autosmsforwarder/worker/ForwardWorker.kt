@@ -9,6 +9,7 @@ import com.autosmsforwarder.domain.ForwardStatus
 import com.autosmsforwarder.domain.MessageFormatter
 import com.autosmsforwarder.sms.AndroidSmsSender
 import com.autosmsforwarder.sms.SmsSender
+import com.autosmsforwarder.settings.AppSettings
 import com.autosmsforwarder.settings.SettingsRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
@@ -18,7 +19,8 @@ class ForwardWorker(
     parameters: WorkerParameters,
     private val repository: ForwardRepository,
     private val sender: SmsSender,
-    private val targetNumber: String?
+    private val targetNumber: String?,
+    private val loadSettings: suspend () -> AppSettings = { SettingsRepository(context).settings.first() }
 ) : CoroutineWorker(context, parameters) {
     constructor(context: Context, parameters: WorkerParameters) : this(
         context,
@@ -30,8 +32,16 @@ class ForwardWorker(
 
     override suspend fun doWork(): Result {
         val key = inputData.getString(KEY_DEDUPE) ?: return Result.failure()
+        val settings = loadSettings()
+        if (!settings.forwardingEnabled) {
+            repository.cancelPending(key)
+            return Result.success()
+        }
         val pending = repository.beginOrResume(key) ?: return Result.success()
-        val settings = SettingsRepository(applicationContext).settings.first()
+        if (!loadSettings().forwardingEnabled) {
+            repository.cancelPending(key)
+            return Result.success()
+        }
         val currentTarget = targetNumber ?: settings.targetNumber
         if (currentTarget.isBlank()) {
             repository.complete(key, ForwardStatus.FAILED)
@@ -49,12 +59,13 @@ class ForwardWorker(
             false
         }
         if (sent) {
-            val queued = repository.complete(key, ForwardStatus.SENT, settings.archiveWriteToken.isNotBlank())
-            if (queued) ArchiveScheduler.enqueue(applicationContext, key)
+            repository.complete(key, ForwardStatus.SENT)
             return Result.success()
         }
 
-        val attempts = repository.findLog(key)?.attempts ?: return Result.failure()
+        val log = repository.findLog(key) ?: return Result.failure()
+        if (log.status == ForwardStatus.CANCELLED) return Result.success()
+        val attempts = log.attempts
         if (attempts >= MAX_ATTEMPTS) {
             repository.complete(key, ForwardStatus.FAILED)
             return Result.failure()

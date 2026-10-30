@@ -1,5 +1,7 @@
 # Tasks (do in order, one at a time)
 
+T1–T11 record completed V1/V1.1 work. For V1.2, complete one task at a time and obtain the user's approval for its plan before coding. V1.2 requirements supersede conflicting historical acceptance criteria.
+
 T1. Project skeleton — DONE
 - Create the Android project, dependencies, package structure and manifest permissions per CLAUDE.md.
 - Done when: app builds, launches to an empty MainScreen, and a placeholder unit test passes.
@@ -43,3 +45,35 @@ T10. End-to-end verification — DONE
 T11. V1.1 cloud archive upload — DONE
 - Move the full body into an upload outbox after a confirmed SMS send, add WorkManager network retries, and connect Settings to the private Cloudflare Worker.
 - Done when Room migration preserves V1 data, forwarding remains independent of upload failures, duplicate uploads are safe, queued bodies survive reboot, Clear log removes local queued bodies, and tests/build pass.
+
+T12. V1.2 specification and UI decisions — DONE (documentation only)
+- Record the approved main-screen status rows, Settings-only route switches, separate keyword lists, independent routes, one-attempt web delivery, and cancellation of queued forwards when forwarding is switched Off. Update requirements, design, task plan, and project rules; make V1/V1.1 conflicting descriptions historical.
+- Done when the four canonical documents agree and are shown to the user for review. Do not change app code, build an APK, commit, or push as part of T12.
+
+T13. Route settings and UI — DONE (intermediate build; not released)
+- Persist each route's switch, All SMS/Matching keywords mode, and comma-separated keywords. Keep destination/delay for forwarding and masked write token for web archiving. Build the two Settings sections and main-screen status rows, with validation and one Save action. (R12, R17)
+- Done when valid configurations survive restart, invalid enabled routes cannot be saved, and the main screen labels its log Forwarding activity. Do not change receive routing yet; do not publish a partially implemented build.
+
+T14. Pure route matching — DONE (unit tested; not yet connected to receiving)
+- Implement and test comma parsing, body-only case-insensitive any-keyword matching, and independent forwarding/web decisions. (R13, R14)
+- Done when unit tests cover all route combinations, phrases, whitespace/empty entries, mixed case, empty bodies, non-Latin text, and sender-only keyword occurrences.
+
+T15. SMS forwarding route — DONE (unit and emulator tested; not released)
+- Apply the forwarding decision to newly received SMS while preserving formatting, delay, retry, loop prevention, deduplication, and log behavior. Cancel queued sends/retries and delete pending bodies when forwarding is saved as Off; show unsent rows as CANCELLED. (R14, R16)
+- Done when matched SMS follow the existing send path, unmatched/web-only SMS create no forwarding work or log row, and queued forward cancellation is verified without altering completed SENT rows.
+
+T16. Independent one-attempt web route — DONE (unit and emulator tested; not released)
+- Decouple Cloudflare POST from successful forwarding. For web matches, use the original SMS and one immediate best-effort attempt; skip when offline and discard all errors. Remove V1.1 network constraints, retry queue, sweep, and startup replay. Delete transient web bodies when disabled or orphaned; migrate V1.1 queued uploads away while preserving forwarding data. (R15, R16)
+- Done when web-only and loop-skipped-forward messages can reach the API, forwarding outcomes do not affect web delivery, offline/errors cause no retry, and migration/cleanup tests pass.
+
+T17. V1.2 end-to-end verification and release — DONE (automated verification and signed artifact; real-phone checks pending)
+- Test route combinations, keyword filtering, switch-off behavior, privacy, upgrade, and API failure on a disposable emulator. Build and verify a release APK with the existing local signing key and document real-phone checks. (R17)
+- Done when automated checks and a versioned verification report are complete. Show the result to the user; do not install, commit, push, or deploy without approval for those actions.
+
+T18. Visible save feedback and combined route activity — DONE (automated verification and signed review APK; real-phone checks pending)
+- Make Settings save, validation, and failure feedback visible without scrolling. Show one activity row for either selected route with separate SMS and Web statuses. Keep one-attempt web behavior, snippet-only seven-day metadata, and a data-preserving Room migration. (R18, R19)
+- Done when unit and emulator tests verify feedback, route status transitions, web-only rows, privacy, retention, and V1.2-to-V1.3 migration; build a reviewable APK. Do not install, commit, or push without separate approval.
+
+T19. V1.4 optional app source metadata — DONE (unit/emulator tests and signed review APK; rollout pending)
+- Add optional manual source phone/name settings, validation and persistence; snapshot values in transient web work, send supplied values in JSON, and distinguish configured sources in web idempotency keys. Add a preserving Room migration and verify old migrations, settings, routing, payloads and one-attempt semantics.
+- Complete unit/emulator testing and a signed review build before moving to the reader project. Do not install, deploy, commit or push as part of this local change.

@@ -4,25 +4,29 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.autosmsforwarder.data.ForwardDatabase
-import com.autosmsforwarder.data.ForwardLogEntity
 import com.autosmsforwarder.domain.TimeWindow
 import com.autosmsforwarder.health.HealthChecker
+import com.autosmsforwarder.settings.MatchMode
 import com.autosmsforwarder.settings.SettingsRepository
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 data class MainUiState(
     val targetNumber: String = "",
     val forwardingEnabled: Boolean = true,
+    val forwardMatchMode: MatchMode = MatchMode.ALL,
+    val webEnabled: Boolean = false,
+    val webMatchMode: MatchMode = MatchMode.ALL,
     val statusLine: String = "Checking phone status…",
     val permissionsNeeded: Boolean = false,
     val batteryPromptNeeded: Boolean = false,
     val window: TimeWindow = TimeWindow.FIVE_MINUTES,
-    val rows: List<ForwardLogEntity> = emptyList()
+    val rows: List<MessageActivityRow> = emptyList()
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -39,17 +43,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingsRepository.settings.collect { settings ->
                 mutableState.value = mutableState.value.copy(
                     targetNumber = settings.targetNumber,
-                    forwardingEnabled = settings.forwardingEnabled
+                    forwardingEnabled = settings.forwardingEnabled,
+                    forwardMatchMode = settings.forwardMatchMode,
+                    webEnabled = settings.webEnabled,
+                    webMatchMode = settings.webMatchMode
                 )
             }
         }
         viewModelScope.launch {
-            MainLogObserver(database.logDao()::recent, flow {
+            val clock = flow {
                 while (true) {
                     emit(System.currentTimeMillis())
                     delay(15_000L)
                 }
-            }).observe(selectedWindow).collect { rows ->
+            }
+            val forward = MainLogObserver(database.logDao()::recent, clock).observe(selectedWindow)
+            val web = MainLogObserver(database.webLogDao()::recent, clock).observe(selectedWindow)
+            combine(forward, web, ::mergeMessageActivity).collect { rows ->
                 mutableState.value = mutableState.value.copy(rows = rows)
             }
         }
@@ -58,10 +68,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectWindow(window: TimeWindow) {
         selectedWindow.value = window
         mutableState.value = mutableState.value.copy(window = window)
-    }
-
-    fun setForwardingEnabled(enabled: Boolean) {
-        viewModelScope.launch { settingsRepository.setForwardingEnabled(enabled) }
     }
 
     fun refreshPhoneStatus() {

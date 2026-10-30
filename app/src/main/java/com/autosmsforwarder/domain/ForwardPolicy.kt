@@ -9,6 +9,7 @@ enum class ForwardStatus {
     SENDING,
     SENT,
     FAILED,
+    CANCELLED,
     SKIPPED_LOOP
 }
 

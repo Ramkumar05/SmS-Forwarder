@@ -14,7 +14,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -22,17 +21,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.autosmsforwarder.data.ForwardLogEntity
 import com.autosmsforwarder.domain.TimeWindow
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 
 @Composable
 fun MainScreen(
@@ -55,13 +53,15 @@ fun MainScreen(
         Surface(modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize().statusBarsPadding().padding(16.dp)) {
                 Text("Auto SMS Forwarder", style = MaterialTheme.typography.headlineSmall)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Forward to", style = MaterialTheme.typography.labelMedium)
-                        Text(state.targetNumber.ifBlank { "Not configured" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    Switch(checked = state.forwardingEnabled, onCheckedChange = mainViewModel::setForwardingEnabled)
-                }
+                Text("Forward to: ${state.targetNumber.ifBlank { "Not configured" }}", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    "SMS forwarding: ${if (state.forwardingEnabled) "On" else "Off"} · ${state.forwardMatchMode.label}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+                Text(
+                    "Web archive: ${if (state.webEnabled) "On" else "Off"} · ${state.webMatchMode.label}",
+                    style = MaterialTheme.typography.bodyMedium
+                )
                 Text(state.statusLine, style = MaterialTheme.typography.bodySmall)
                 if (state.batteryPromptNeeded) {
                     TextButton(onClick = onBatteryExemptionClick) { Text("Allow battery exemption") }
@@ -74,6 +74,8 @@ fun MainScreen(
                     )
                 }
                 Button(onClick = onSettingsClick) { Text("Settings") }
+
+                Text("Message activity", style = MaterialTheme.typography.titleMedium)
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     listOf(
@@ -93,13 +95,13 @@ fun MainScreen(
                 HorizontalDivider()
                 if (state.rows.isEmpty()) {
                     Text(
-                        "No forwarded messages in this time window",
+                        "No message activity in this time window",
                         modifier = Modifier.padding(top = 24.dp),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 } else {
                     LazyColumn(modifier = Modifier.weight(1f)) {
-                        items(state.rows, key = { it.id }) { row ->
+                        items(state.rows, key = { it.dedupeKey }) { row ->
                             LogTableRow(row)
                             HorizontalDivider()
                         }
@@ -113,20 +115,22 @@ fun MainScreen(
 @Composable
 private fun LogTableHeader() {
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-        Text("Time", modifier = Modifier.weight(0.17f), style = MaterialTheme.typography.labelSmall)
-        Text("From", modifier = Modifier.weight(0.22f).padding(end = 4.dp), style = MaterialTheme.typography.labelSmall)
-        Text("Message", modifier = Modifier.weight(0.39f).padding(end = 4.dp), style = MaterialTheme.typography.labelSmall)
-        Text("Status", modifier = Modifier.weight(0.22f), style = MaterialTheme.typography.labelSmall)
+        Text("Time", modifier = Modifier.weight(0.14f), style = MaterialTheme.typography.labelSmall)
+        Text("From", modifier = Modifier.weight(0.17f).padding(end = 4.dp), style = MaterialTheme.typography.labelSmall)
+        Text("Message", modifier = Modifier.weight(0.27f).padding(end = 4.dp), style = MaterialTheme.typography.labelSmall)
+        Text("SMS", modifier = Modifier.weight(0.19f), style = MaterialTheme.typography.labelSmall)
+        Text("Web", modifier = Modifier.weight(0.23f), style = MaterialTheme.typography.labelSmall)
     }
 }
 
 @Composable
-private fun LogTableRow(row: ForwardLogEntity) {
-    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(row.receivedAt))
+private fun LogTableRow(row: MessageActivityRow) {
+    val time = SimpleDateFormat("HH:mm", LocalConfiguration.current.locales[0]).format(Date(row.receivedAt))
     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-        Text(time, modifier = Modifier.weight(0.17f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-        Text(row.sender, modifier = Modifier.weight(0.22f).padding(end = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-        Text(row.snippet, modifier = Modifier.weight(0.39f).padding(end = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
-        Text(row.status.name, modifier = Modifier.weight(0.22f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        Text(time, modifier = Modifier.weight(0.14f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        Text(row.sender, modifier = Modifier.weight(0.17f).padding(end = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        Text(row.snippet, modifier = Modifier.weight(0.27f).padding(end = 4.dp), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall)
+        Text(row.smsStatus?.name ?: "—", modifier = Modifier.weight(0.19f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
+        Text(row.webStatus?.name ?: "—", modifier = Modifier.weight(0.23f), maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelSmall)
     }
 }

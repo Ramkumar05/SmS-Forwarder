@@ -4,3 +4,19 @@
 local.properties
 signing/
 *.iml
+
+# Local caches, release artifacts and credentials
+.kotlin/
+.DS_Store
+releases/
+*.apk
+*.aab
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+.env
+.env.*
+!.env.example
+.dev.vars

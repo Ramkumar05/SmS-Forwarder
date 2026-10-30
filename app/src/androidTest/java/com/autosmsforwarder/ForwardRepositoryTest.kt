@@ -12,6 +12,8 @@ import com.autosmsforwarder.data.ForwardDatabase
 import com.autosmsforwarder.data.ForwardLogEntity
 import com.autosmsforwarder.data.ForwardRepository
 import com.autosmsforwarder.data.PendingForwardEntity
+import com.autosmsforwarder.data.WebLogEntity
+import com.autosmsforwarder.data.WebStatus
 import com.autosmsforwarder.domain.ForwardStatus
 import com.autosmsforwarder.domain.IncomingMessage
 import com.autosmsforwarder.worker.RetentionWorker
@@ -64,6 +66,31 @@ class ForwardRepositoryTest {
         assertNull(database.pendingDao().find(failedKey))
     }
 
+    @Test fun disablingForwardingCancelsUnsentRowsAndDeletesBodiesButPreservesSent() = runBlocking {
+        val base = IncomingMessage("sender", "private body", 1_800_000_000_000L)
+        val pending = repository.recordIfNew(base, "+15551234567")!!.dedupeKey
+        val retry = repository.recordIfNew(base.copy(receivedAtMillis = base.receivedAtMillis + 1), "+15551234567")!!.dedupeKey
+        repository.beginOrResume(retry)
+        repository.resetForRetry(retry)
+        val sending = repository.recordIfNew(base.copy(receivedAtMillis = base.receivedAtMillis + 2), "+15551234567")!!.dedupeKey
+        repository.beginOrResume(sending)
+        val sent = repository.recordIfNew(base.copy(receivedAtMillis = base.receivedAtMillis + 3), "+15551234567")!!.dedupeKey
+        repository.beginOrResume(sent)
+        repository.complete(sent, ForwardStatus.SENT)
+
+        assertEquals(setOf(pending, retry, sending), repository.cancelUnsent().toSet())
+        listOf(pending, retry, sending).forEach { key ->
+            assertEquals(ForwardStatus.CANCELLED, repository.findLog(key)?.status)
+            assertNull(database.pendingDao().find(key))
+            assertNull(repository.beginOrResume(key))
+        }
+        repository.resetForRetry(sending)
+        repository.complete(sending, ForwardStatus.FAILED)
+        assertEquals(ForwardStatus.CANCELLED, repository.findLog(sending)?.status)
+        assertEquals(ForwardStatus.SENT, repository.findLog(sent)?.status)
+        assertTrue(repository.cancelUnsent().isEmpty())
+    }
+
     @Test fun duplicateInsertIsAtomicAndSnippetIsLimited() = runBlocking {
         val body = "x".repeat(150)
         val message = IncomingMessage("+919876543210", body, 1_800_000_000_000L)
@@ -79,18 +106,17 @@ class ForwardRepositoryTest {
         assertEquals(2, database.logDao().count())
     }
 
-    @Test fun sentMessageMovesToUploadOutboxAndClearLogRemovesIt() = runBlocking {
+    @Test fun successfulForwardDoesNotQueueAWebUpload() = runBlocking {
         val message = IncomingMessage("+919876543210", "full private body", 1_800_000_000_000L)
         val key = repository.recordIfNew(message, "+15551234567")!!.dedupeKey
         repository.beginOrResume(key)
 
-        assertTrue(repository.complete(key, ForwardStatus.SENT, archiveAfterSend = true))
+        repository.complete(key, ForwardStatus.SENT)
         assertNull(database.pendingDao().find(key))
-        assertEquals(message.body, repository.findUpload(key)?.body)
+        assertTrue(database.webDeliveryDao().allKeys().isEmpty())
         assertEquals(ForwardStatus.SENT, repository.findLog(key)?.status)
 
-        assertEquals(listOf(key), repository.clearLog())
-        assertNull(repository.findUpload(key))
+        assertTrue(repository.clearLog().isEmpty())
         assertNull(repository.findLog(key))
     }
 
@@ -105,10 +131,12 @@ class ForwardRepositoryTest {
         )!!.dedupeKey
         repository.beginOrResume(sent)
         repository.complete(sent, ForwardStatus.SENT)
+        database.webLogDao().insert(WebLogEntity("web-only", 1_800_000_000_003L, "sender", "snippet", WebStatus.COMPLETED, 1_800_000_000_003L))
 
         assertEquals(listOf(pending), repository.clearLog())
         assertEquals(0, database.logDao().count())
         assertEquals(0, database.pendingDao().count())
+        assertNull(database.webLogDao().find("web-only"))
         assertNull(repository.beginOrResume(pending))
         assertTrue(repository.recordIfNew(
             IncomingMessage("+919876543210", "pending private body", 1_800_000_000_001L),
@@ -124,6 +152,8 @@ class ForwardRepositoryTest {
         database.logDao().insert(ForwardLogEntity(dedupeKey = "boundary", receivedAt = now - sevenDays, sender = "s", snippet = "", status = ForwardStatus.SENT, attempts = 1, lastUpdatedAt = now))
         database.logDao().insert(ForwardLogEntity(dedupeKey = "stale", receivedAt = now - day, sender = "s", snippet = "", status = ForwardStatus.PENDING, attempts = 0, lastUpdatedAt = now - day))
         database.pendingDao().insert(PendingForwardEntity("stale", "s", now - day, "private", now - day - 1))
+        database.webLogDao().insert(WebLogEntity("old-web", now - sevenDays - 1, "s", "", WebStatus.COMPLETED, now))
+        database.webLogDao().insert(WebLogEntity("boundary-web", now - sevenDays, "s", "", WebStatus.FAILED, now))
 
         repository.purgeExpired(now)
 
@@ -131,6 +161,8 @@ class ForwardRepositoryTest {
         assertEquals(ForwardStatus.SENT, repository.findLog("boundary")?.status)
         assertEquals(ForwardStatus.FAILED, repository.findLog("stale")?.status)
         assertNull(database.pendingDao().find("stale"))
+        assertNull(database.webLogDao().find("old-web"))
+        assertEquals(WebStatus.FAILED, database.webLogDao().find("boundary-web")?.status)
         assertFalse(database.logDao().count() == 0)
     }
 

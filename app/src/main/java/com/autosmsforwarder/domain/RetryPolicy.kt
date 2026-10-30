@@ -12,7 +12,7 @@ class RetryPolicy {
 
     fun beginOrResumeSend(currentStatus: ForwardStatus): ForwardStatus? = when (currentStatus) {
         ForwardStatus.PENDING, ForwardStatus.SENDING -> ForwardStatus.SENDING
-        ForwardStatus.SENT, ForwardStatus.FAILED, ForwardStatus.SKIPPED_LOOP -> null
+        ForwardStatus.SENT, ForwardStatus.FAILED, ForwardStatus.CANCELLED, ForwardStatus.SKIPPED_LOOP -> null
     }
 
     fun afterAttempt(completedAttempts: Int, succeeded: Boolean): SendTransition {

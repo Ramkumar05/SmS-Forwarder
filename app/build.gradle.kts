@@ -12,8 +12,8 @@ android {
         applicationId = "com.autosmsforwarder"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = 5
+        versionName = "1.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,6 +47,10 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core:1.7.0")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4-android:1.12.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
+    androidTestImplementation("androidx.test.espresso:espresso-idling-resource:3.7.0")
     androidTestImplementation("androidx.room:room-testing:2.8.5")
     androidTestImplementation("androidx.work:work-testing:2.12.0")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }

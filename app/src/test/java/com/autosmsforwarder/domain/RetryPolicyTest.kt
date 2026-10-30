@@ -18,6 +18,7 @@ class RetryPolicyTest {
     fun alreadySentOrTerminalRowIsNeverSentAgain() {
         assertNull(policy.beginOrResumeSend(ForwardStatus.SENT))
         assertNull(policy.beginOrResumeSend(ForwardStatus.FAILED))
+        assertNull(policy.beginOrResumeSend(ForwardStatus.CANCELLED))
         assertNull(policy.beginOrResumeSend(ForwardStatus.SKIPPED_LOOP))
     }
 

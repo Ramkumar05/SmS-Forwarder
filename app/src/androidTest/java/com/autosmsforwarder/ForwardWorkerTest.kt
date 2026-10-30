@@ -15,6 +15,7 @@ import com.autosmsforwarder.domain.ForwardStatus
 import com.autosmsforwarder.domain.IncomingMessage
 import com.autosmsforwarder.sms.SmsSender
 import com.autosmsforwarder.settings.SendDelay
+import com.autosmsforwarder.settings.AppSettings
 import com.autosmsforwarder.worker.ForwardWorkRequestFactory
 import com.autosmsforwarder.worker.ForwardWorker
 import kotlinx.coroutines.runBlocking
@@ -90,6 +91,50 @@ class ForwardWorkerTest {
         assertEquals(15_000L, fifteen.workSpec.initialDelay)
         assertEquals(30_000L, thirty.workSpec.initialDelay)
         assertEquals(setOf(ForwardWorker.KEY_DEDUPE), thirty.workSpec.input.keyValueMap.keys)
+    }
+
+    @Test fun disabledForwardingPreventsQueuedWorkerFromSending() = runBlocking {
+        val key = repository.recordIfNew(
+            IncomingMessage("sender", "private body", 1_800_000_000_000L), "+15551234567"
+        )!!.dedupeKey
+        val sender = RecordingSender()
+        val worker = TestListenableWorkerBuilder<ForwardWorker>(ApplicationProvider.getApplicationContext())
+            .setInputData(Data.Builder().putString(ForwardWorker.KEY_DEDUPE, key).build())
+            .setWorkerFactory(object : WorkerFactory() {
+                override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
+                    ForwardWorker(appContext, workerParameters, repository, sender, "+15551234567") {
+                        AppSettings(forwardingEnabled = false)
+                    }
+            }).build()
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertTrue(sender.sent.isEmpty())
+        assertEquals(ForwardStatus.CANCELLED, repository.findLog(key)?.status)
+        assertNull(database.pendingDao().find(key))
+    }
+
+    @Test fun cancelledInFlightFailureDoesNotRetry() = runBlocking {
+        val key = repository.recordIfNew(
+            IncomingMessage("sender", "private body", 1_800_000_000_001L), "+15551234567"
+        )!!.dedupeKey
+        val sender = object : SmsSender {
+            override suspend fun send(targetNumber: String, text: String): Boolean {
+                repository.cancelPending(key)
+                return false
+            }
+        }
+        val worker = TestListenableWorkerBuilder<ForwardWorker>(ApplicationProvider.getApplicationContext())
+            .setInputData(Data.Builder().putString(ForwardWorker.KEY_DEDUPE, key).build())
+            .setWorkerFactory(object : WorkerFactory() {
+                override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
+                    ForwardWorker(appContext, workerParameters, repository, sender, "+15551234567") {
+                        AppSettings(forwardingEnabled = true)
+                    }
+            }).build()
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertEquals(ForwardStatus.CANCELLED, repository.findLog(key)?.status)
+        assertNull(database.pendingDao().find(key))
     }
 
     private class RecordingSender : SmsSender {

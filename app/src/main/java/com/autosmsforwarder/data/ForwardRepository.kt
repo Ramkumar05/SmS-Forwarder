@@ -52,40 +52,51 @@ class ForwardRepository(
         pending
     }
 
-    suspend fun complete(key: String, status: ForwardStatus, archiveAfterSend: Boolean = false): Boolean = database.withTransaction {
+    suspend fun complete(key: String, status: ForwardStatus) = database.withTransaction {
         require(status == ForwardStatus.SENT || status == ForwardStatus.FAILED)
-        val log = database.logDao().find(key) ?: return@withTransaction false
-        val pending = database.pendingDao().find(key)
-        if (status == ForwardStatus.SENT && archiveAfterSend && pending != null) {
-            database.uploadDao().insert(
-                UploadOutboxEntity(key, pending.sender, pending.smsTimestamp, pending.body, System.currentTimeMillis())
-            )
-        }
+        val log = database.logDao().find(key) ?: return@withTransaction
+        if (log.status == ForwardStatus.CANCELLED && status != ForwardStatus.SENT) return@withTransaction
         database.logDao().update(key, status, log.attempts, System.currentTimeMillis())
         database.pendingDao().delete(key)
-        status == ForwardStatus.SENT && archiveAfterSend && pending != null
     }
 
     suspend fun resetForRetry(key: String) = database.withTransaction {
         val log = database.logDao().find(key) ?: return@withTransaction
+        if (log.status != ForwardStatus.SENDING) return@withTransaction
         database.logDao().update(key, ForwardStatus.PENDING, log.attempts, System.currentTimeMillis())
+    }
+
+    suspend fun cancelUnsent(): List<String> = database.withTransaction {
+        val keys = database.logDao().allUnsentKeys()
+        keys.forEach { cancelPendingInTransaction(it) }
+        database.pendingDao().deleteAll()
+        keys
+    }
+
+    suspend fun cancelPending(key: String) = database.withTransaction {
+        cancelPendingInTransaction(key)
+    }
+
+    private suspend fun cancelPendingInTransaction(key: String) {
+        val log = database.logDao().find(key)
+        if (log?.status == ForwardStatus.PENDING || log?.status == ForwardStatus.SENDING) {
+            database.logDao().update(key, ForwardStatus.CANCELLED, log.attempts, System.currentTimeMillis())
+        }
+        database.pendingDao().delete(key)
     }
 
     suspend fun findLog(key: String): ForwardLogEntity? = database.logDao().find(key)
 
-    suspend fun pendingUploads(): List<String> = database.uploadDao().allKeys()
-
-    suspend fun findUpload(key: String): UploadOutboxEntity? = database.uploadDao().find(key)
-
-    suspend fun completeUpload(key: String) = database.uploadDao().delete(key)
-
     suspend fun clearLog(): List<String> = database.withTransaction {
         val pendingKeys = database.pendingDao().allKeys()
-        val uploadKeys = database.uploadDao().allKeys()
+        val webKeys = database.webDeliveryDao().allKeys()
+        val legacyKeys = database.legacyArchiveWorkDao().allKeys()
         database.pendingDao().deleteAll()
-        database.uploadDao().deleteAll()
+        database.webDeliveryDao().deleteAll()
+        database.webLogDao().deleteAll()
+        database.legacyArchiveWorkDao().deleteAll()
         database.logDao().deleteAll()
-        pendingKeys + uploadKeys
+        (pendingKeys + webKeys + legacyKeys).distinct()
     }
 
     suspend fun purgeExpired(nowMillis: Long) = database.withTransaction {
@@ -93,5 +104,6 @@ class ForwardRepository(
         database.logDao().failExpiredPending(pendingCutoff, nowMillis)
         database.pendingDao().deleteOlderThan(pendingCutoff)
         database.logDao().deleteOlderThan(RetentionPolicy.logCutoff(nowMillis))
+        database.webLogDao().deleteOlderThan(RetentionPolicy.logCutoff(nowMillis))
     }
 }
