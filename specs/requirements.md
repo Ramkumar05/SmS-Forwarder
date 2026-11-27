@@ -130,3 +130,22 @@ R20. App source configuration and uploads
 - Include configured source metadata in the deterministic web-only idempotency key so otherwise identical uploads with different sources remain distinct. Both blank keeps the legacy key. SMS-forwarding keys and behavior remain unchanged.
 - Upgrade the Room schema additively, preserving existing forwarding history, pending SMS sends and web status metadata. Existing transient web rows get blank source fields and remain subject to the existing expiry/orphan rules. No retry, replay or backfill is added.
 - Cloudflare's optional source fields supersede the historical R15 statement that its API contract remains unchanged. The updated service accepts older uploads. Local build/testing does not authorize deployment or phone installation.
+
+## V1.5: Offline web upload queue
+
+R21. Persistent queue instead of one attempt
+- Supersedes the one-attempt, drop-when-offline parts of R15, R16 and R19. Every SMS matching the web route is stored (full body, original sender, receive time, app source snapshot, deterministic idempotency key) in app-private Room when it arrives, whether or not the phone is online, so deleting the SMS from the phone afterwards loses nothing.
+- Queued messages are uploaded to the existing `POST /api/messages` endpoint with the existing idempotency key and the write token saved at send time, **oldest first**, one request per message, whenever the network is available. N queued messages produce N requests once connectivity returns. No API, key, or payload change; the app source values captured at receive time are used, not later edits.
+- HTTP 2xx completes the message; any other HTTP response marks it Failed and removes it from the queue (no retry of server errors in this version). A connection failure, timeout, or loss of network keeps the message queued for a later attempt.
+- The queue survives app restart and phone reboot: queued uploads resume automatically without a new SMS.
+
+R22. Limits and cleanup
+- The queue keeps at most the newest 50 messages; when a new message exceeds 50, the oldest queued message is dropped and its activity row becomes Skipped. Queued messages older than 7 days are dropped (Skipped) at receive time, before each drain, at startup and in daily retention.
+- Saving Web archive as Off cancels web work and deletes every queued message (activity rows become Skipped); no queue is kept while Off. Clear log deletes local SMS/web activity history but leaves the queue and its work untouched. Messages already in Cloudflare are never deleted.
+- Full bodies still never go into WorkManager input, Logcat, notifications, crash reports or the activity tables; the work request contains no message data.
+
+R23. Queue tab and statuses
+- Navigation becomes bottom tabs **Home**, **Queue**, **Settings**; Settings no longer opens as a separate back-navigated screen. Home loses its Settings button; its Message activity list is unchanged. No "uploads waiting" counter on Home.
+- The Queue tab lists the waiting messages oldest first: received date/time, sender, and at most the first 100 characters of the body, with an empty state. It is read-only.
+- Web statuses: **Queued** while waiting (including offline), **Uploading** during an attempt, **Completed** after 2xx, **Failed** after an HTTP error response, **Skipped** when dropped (older than 7 days, over the 50 cap, or Web switched Off). An attempt interrupted by network loss or process death returns to Queued. Unconfirmed is no longer produced.
+- Upgrade preserves the database schema (version 5, no migration): web_delivery rows become queue rows, and the old per-process session marker is ignored.

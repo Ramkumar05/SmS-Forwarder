@@ -1,6 +1,6 @@
 # Tasks (do in order, one at a time)
 
-T1–T11 record completed V1/V1.1 work. For V1.2, complete one task at a time and obtain the user's approval for its plan before coding. V1.2 requirements supersede conflicting historical acceptance criteria.
+T1–T11 record completed V1/V1.1 work. T20 (V1.5) was approved by the user to run end-to-end on a feature branch without pauses. For V1.2, complete one task at a time and obtain the user's approval for its plan before coding. V1.2 requirements supersede conflicting historical acceptance criteria.
 
 T1. Project skeleton — DONE
 - Create the Android project, dependencies, package structure and manifest permissions per CLAUDE.md.
@@ -77,3 +77,7 @@ T18. Visible save feedback and combined route activity — DONE (automated verif
 T19. V1.4 optional app source metadata — DONE (unit/emulator tests and signed review APK; rollout pending)
 - Add optional manual source phone/name settings, validation and persistence; snapshot values in transient web work, send supplied values in JSON, and distinguish configured sources in web idempotency keys. Add a preserving Room migration and verify old migrations, settings, routing, payloads and one-attempt semantics.
 - Complete unit/emulator testing and a signed review build before moving to the reader project. Do not install, deploy, commit or push as part of this local change.
+
+T20. V1.5 offline web upload queue and Queue tab — IN PROGRESS
+- Update CLAUDE.md and specs first. Persist every web-route match; drain oldest first through a network-constrained unique worker with the existing API and idempotency key; keep the newest 50 for 7 days; survive reboot; delete the queue when Web is Off; leave it alone on Clear log; add Home/Queue/Settings bottom tabs and a read-only Queue list. (R21–R23)
+- Done when unit and Android tests are updated, the project builds, JVM tests pass, androidTest sources compile (emulator run if one is available), and the branch is pushed. Do not merge, release or deploy.
