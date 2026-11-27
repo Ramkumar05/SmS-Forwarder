@@ -15,6 +15,7 @@ import com.autosmsforwarder.settings.RouteSettingsCoordinator
 import com.autosmsforwarder.settings.RouteSettingsValidator
 import com.autosmsforwarder.settings.SendDelay
 import com.autosmsforwarder.settings.SettingsRepository
+import com.autosmsforwarder.worker.WebDeliveryScheduler
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,11 +60,8 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
                 WorkManager.getInstance(getApplication()).cancelUniqueWork("fwd-$key").result.get()
             }
         },
-        cancelWebWork = { key ->
-            withContext(Dispatchers.IO) {
-                WorkManager.getInstance(getApplication()).cancelUniqueWork("web-$key").result.get()
-                WorkManager.getInstance(getApplication()).cancelUniqueWork("web-expire-$key").result.get()
-            }
+        cancelWebWork = { _ ->
+            withContext(Dispatchers.IO) { WebDeliveryScheduler.cancel(getApplication()) }
         }
     )
     private val mutableState = MutableStateFlow(SettingsUiState())
@@ -143,8 +141,6 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             withContext(Dispatchers.IO) {
                 pendingKeys.forEach { key ->
                     WorkManager.getInstance(getApplication()).cancelUniqueWork("fwd-$key").result.get()
-                    WorkManager.getInstance(getApplication()).cancelUniqueWork("web-$key").result.get()
-                    WorkManager.getInstance(getApplication()).cancelUniqueWork("web-expire-$key").result.get()
                     WorkManager.getInstance(getApplication()).cancelUniqueWork("archive-$key").result.get()
                 }
             }

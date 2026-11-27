@@ -13,7 +13,6 @@ import com.autosmsforwarder.receiver.WebRouteProcessor
 import com.autosmsforwarder.settings.MatchMode
 import com.autosmsforwarder.settings.RouteConfiguration
 import com.autosmsforwarder.settings.SendDelay
-import com.autosmsforwarder.worker.WebConnectivityChecker
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -46,7 +45,7 @@ class RouteMatrixTest {
             ApplicationProvider.getApplicationContext(), ForwardDatabase::class.java
         ).build()
         forward = ForwardRouteProcessor(ForwardRepository(database))
-        web = WebRouteProcessor(WebDeliveryRepository(database, "test-session", { now }), WebConnectivityChecker { true })
+        web = WebRouteProcessor(WebDeliveryRepository(database, { now }))
     }
 
     @After fun tearDown() = database.close()

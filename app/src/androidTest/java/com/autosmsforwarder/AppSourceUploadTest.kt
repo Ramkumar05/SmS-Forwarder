@@ -14,7 +14,6 @@ import com.autosmsforwarder.settings.MatchMode
 import com.autosmsforwarder.settings.RouteConfiguration
 import com.autosmsforwarder.settings.SendDelay
 import com.autosmsforwarder.worker.HttpWebArchiveUploader
-import com.autosmsforwarder.worker.WebConnectivityChecker
 import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
@@ -29,8 +28,8 @@ class AppSourceUploadTest {
     @Test fun sourceSnapshotDoesNotChangeOriginalSmsOrLocalActivityIdentity() = runBlocking {
         val database = Room.inMemoryDatabaseBuilder(ApplicationProvider.getApplicationContext(), ForwardDatabase::class.java).build()
         try {
-            val repository = WebDeliveryRepository(database, "fixture", { 1000 })
-            val processor = WebRouteProcessor(repository, WebConnectivityChecker { true })
+            val repository = WebDeliveryRepository(database, { 1000 })
+            val processor = WebRouteProcessor(repository)
             val config = RouteConfiguration(false, "", SendDelay.INSTANT, MatchMode.ALL, "", true, MatchMode.ALL, "", "fixture",
                 " +919876543210 ", " Home phone ")
             val message = IncomingMessage("ORIGINAL-SENDER", "Full body", 1000)
@@ -41,7 +40,7 @@ class AppSourceUploadTest {
             assertEquals("Home phone", stored.appSourceName)
             assertEquals("ORIGINAL-SENDER", stored.sender)
             assertNull(processor.recordIfMatched(message, config.copy(appSourceName = "Changed later")))
-            assertEquals("Home phone", repository.claim(key)?.appSourceName)
+            assertEquals("Home phone", repository.nextQueued()?.appSourceName)
         } finally { database.close() }
     }
 

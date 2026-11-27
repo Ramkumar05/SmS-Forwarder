@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
                 assertEquals(listOf("old-upload"), upgraded.legacyArchiveWorkDao().allKeys())
                 assertEquals(emptyList<String>(), upgraded.webDeliveryDao().allKeys())
                 assertEquals(listOf("old-upload"),
-                    com.autosmsforwarder.data.WebDeliveryRepository(upgraded).cleanupAtStartup().legacy)
+                    com.autosmsforwarder.data.WebDeliveryRepository(upgraded).cleanupAtStartup())
                 assertEquals(emptyList<String>(), upgraded.legacyArchiveWorkDao().allKeys())
             } finally {
                 upgraded.close()

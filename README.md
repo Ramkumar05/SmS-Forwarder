@@ -8,9 +8,9 @@ A personal Android app with two independent routes for newly received SMS: forwa
 
 - Each route has its own switch and **All SMS** or **Matching keywords** mode. Enter comma-separated keywords; any one case-insensitive match in the SMS body qualifies. The sender is not checked for keywords.
 - SMS forwarding keeps the existing `FWD from <sender>: <body>` format, Instant/15-second/30-second delay, loop prevention, deduplication, and up to three send attempts. Its log shows forwarding activity only.
-- Web archiving uses the original sender, body, and receive time. It makes one best-effort API attempt independently of forwarding. An offline or failed delivery is dropped without a queue, retry, or backfill.
+- Web archiving uses the original sender, body, and receive time. Every matching SMS is stored in an app-private queue (newest 50, up to 7 days) and uploaded oldest first, independently of forwarding, whenever the network is available, so it survives being offline, a reboot, or the SMS being deleted. An HTTP error response from the server is not retried.
 - Switching forwarding Off cancels queued sends and deletes their pending full bodies. Switching web archiving Off deletes pending web bodies. When both routes are Off, new SMS are ignored without saving them.
-- The home **Message activity** list shows separate SMS and Web statuses, including web-only messages. Web **Queued** means the immediate attempt has not started; an offline or failed attempt is never retried. Settings shows a visible confirmation after a successful save.
+- The home **Message activity** list shows separate SMS and Web statuses, including web-only messages. Web **Queued** means the message is waiting for the network; a server error response becomes **Failed** and is not retried. The **Queue** tab lists waiting uploads; switching Web archive Off deletes the queue, and Clear log leaves it alone. Settings shows a visible confirmation after a successful save.
 
 It uses the system's default SMS subscription. MMS, RCS, old messages, and dual-SIM selection are outside version 1.4.
 
@@ -48,3 +48,7 @@ Settings → Web archive now includes independently optional App source phone nu
 ## Latest source snapshot
 
 This repository contains the complete tested V1.4 app, including the previously unpushed independent routes and combined activity changes. Verification: 57 JVM tests and 49 emulator tests passed; the two legacy opt-in reboot scenarios were not explicitly run. V1.4 is installed on the Moto and realme phones, and the Cloudflare metadata migration/API/viewer deployment is complete. Signed APKs and signing credentials remain local and are excluded from Git. See [T19 verification](specs/t19-test-report.md).
+
+## V1.5 offline web upload queue
+
+The app now has Home, Queue and Settings tabs. Web-route messages are saved on the phone first and drained by one network-constrained WorkManager job, oldest first, using the same API and idempotency key. The queue keeps the newest 50 messages for up to 7 days and resumes after a reboot. See [requirements](specs/requirements.md) R21–R23 and the [design](specs/design.md) V1.5 section. Verification status is in the [T20 report](specs/t20-test-report.md).

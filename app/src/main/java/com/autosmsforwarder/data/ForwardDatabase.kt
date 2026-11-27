@@ -121,6 +121,17 @@ interface PendingForwardDao {
     suspend fun deleteOlderThan(cutoff: Long)
 }
 
+data class QueueRow(val dedupeKey: String, val createdAt: Long)
+
+/** Queue-tab projection: never carries more than 100 characters of the body. */
+data class QueuedMessage(
+    val dedupeKey: String,
+    val sender: String,
+    val smsTimestamp: Long,
+    val snippet: String,
+    val createdAt: Long
+)
+
 @Dao
 interface WebDeliveryDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -132,17 +143,23 @@ interface WebDeliveryDao {
     @Query("SELECT dedupeKey FROM web_delivery")
     suspend fun allKeys(): List<String>
 
-    @Query("SELECT dedupeKey FROM web_delivery WHERE sessionId != :sessionId")
-    suspend fun otherSessionKeys(sessionId: String): List<String>
+    @Query("SELECT dedupeKey, createdAt FROM web_delivery")
+    suspend fun queueRows(): List<QueueRow>
+
+    @Query("SELECT * FROM web_delivery ORDER BY createdAt ASC, dedupeKey ASC LIMIT 1")
+    suspend fun oldest(): WebDeliveryEntity?
+
+    @Query("SELECT COUNT(*) FROM web_delivery")
+    suspend fun count(): Int
+
+    @Query("SELECT dedupeKey, sender, smsTimestamp, substr(body, 1, 100) AS snippet, createdAt FROM web_delivery ORDER BY createdAt ASC, dedupeKey ASC")
+    fun observeQueue(): Flow<List<QueuedMessage>>
 
     @Query("DELETE FROM web_delivery WHERE dedupeKey = :key")
     suspend fun delete(key: String)
 
     @Query("DELETE FROM web_delivery")
     suspend fun deleteAll()
-
-    @Query("DELETE FROM web_delivery WHERE sessionId != :sessionId")
-    suspend fun deleteOtherSessions(sessionId: String)
 }
 
 @Dao
@@ -167,6 +184,9 @@ interface WebLogDao {
 
     @Query("DELETE FROM web_log")
     suspend fun deleteAll()
+
+    @Query("DELETE FROM web_log WHERE status NOT IN ('QUEUED', 'UPLOADING')")
+    suspend fun deleteFinished()
 }
 
 @Dao

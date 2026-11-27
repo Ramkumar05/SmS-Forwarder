@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -34,7 +33,6 @@ import java.util.Date
 
 @Composable
 fun MainScreen(
-    onSettingsClick: () -> Unit,
     onAppSettingsClick: () -> Unit,
     onBatteryExemptionClick: () -> Unit,
     mainViewModel: MainViewModel = viewModel()
@@ -73,7 +71,6 @@ fun MainScreen(
                         style = MaterialTheme.typography.bodySmall
                     )
                 }
-                Button(onClick = onSettingsClick) { Text("Settings") }
 
                 Text("Message activity", style = MaterialTheme.typography.titleMedium)
 

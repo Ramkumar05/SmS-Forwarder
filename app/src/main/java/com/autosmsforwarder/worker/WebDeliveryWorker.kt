@@ -2,12 +2,14 @@ package com.autosmsforwarder.worker
 
 import android.content.Context
 import androidx.work.CoroutineWorker
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OneTimeWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import com.autosmsforwarder.data.ForwardDatabase
 import com.autosmsforwarder.data.WebDeliveryEntity
 import com.autosmsforwarder.data.WebDeliveryRepository
@@ -20,6 +22,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
@@ -65,12 +68,15 @@ class HttpWebArchiveUploader(
     }
 }
 
+/**
+ * Drains the persistent web queue, oldest first. Input data is intentionally empty: message
+ * bodies stay in Room and never enter WorkManager.
+ */
 class WebDeliveryWorker(
     context: Context,
     parameters: WorkerParameters,
     private val repository: WebDeliveryRepository,
     private val uploader: WebArchiveUploader,
-    private val connectivity: WebConnectivityChecker,
     private val loadSettings: suspend () -> AppSettings
 ) : CoroutineWorker(context, parameters) {
     constructor(context: Context, parameters: WorkerParameters) : this(
@@ -78,61 +84,51 @@ class WebDeliveryWorker(
         parameters,
         WebDeliveryRepository(ForwardDatabase.get(context)),
         HttpWebArchiveUploader(),
-        AndroidWebConnectivityChecker(context),
         { SettingsRepository(context).settings.first() }
     )
 
     override suspend fun doWork(): Result {
-        val key = inputData.getString(KEY_DEDUPE) ?: return Result.success()
-        val settings = loadSettings()
-        if (!settings.webEnabled || settings.archiveWriteToken.isBlank() || !connectivity.isOnline()) {
-            repository.discard(key)
-            return Result.success()
+        repository.enforceLimits()
+        while (true) {
+            val settings = loadSettings()
+            if (!settings.webEnabled) {
+                repository.discardAll()
+                return Result.success()
+            }
+            if (settings.archiveWriteToken.isBlank()) return Result.success()
+            val message = repository.nextQueued() ?: return Result.success()
+            val key = message.dedupeKey
+            repository.markUploading(key)
+            try {
+                val response = uploader.upload(message, settings.archiveWriteToken)
+                repository.finish(key, if (response in 200..299) WebStatus.COMPLETED else WebStatus.FAILED)
+            } catch (cancelled: CancellationException) {
+                withContext(NonCancellable) { repository.requeue(key) }
+                throw cancelled
+            } catch (_: IOException) {
+                repository.requeue(key)
+                return Result.retry()
+            } catch (_: Exception) {
+                repository.finish(key, WebStatus.FAILED)
+            }
         }
-        val message = repository.claim(key) ?: return Result.success()
-        try {
-            val response = uploader.upload(message, settings.archiveWriteToken)
-            repository.recordOutcome(key, if (response in 200..299) WebStatus.COMPLETED else WebStatus.FAILED)
-        } catch (cancelled: CancellationException) {
-            withContext(NonCancellable) { repository.recordOutcome(key, WebStatus.UNCONFIRMED) }
-            throw cancelled
-        } catch (_: Exception) {
-            repository.recordOutcome(key, WebStatus.FAILED)
-        }
-        return Result.success()
-    }
-
-    companion object {
-        const val KEY_DEDUPE = "dedupeKey"
     }
 }
 
 object WebDeliveryScheduler {
-    fun createExpiryRequest(key: String): OneTimeWorkRequest = OneTimeWorkRequestBuilder<WebExpiryWorker>()
-            .setInputData(workDataOf(WebExpiryWorker.KEY_DEDUPE to key))
-            .setInitialDelay(WebDeliveryRepository.MAX_AGE_MILLIS, TimeUnit.MILLISECONDS)
-            .build()
+    const val DRAIN_WORK = "web-drain"
 
-    fun createUploadRequest(key: String): OneTimeWorkRequest = OneTimeWorkRequestBuilder<WebDeliveryWorker>()
-            .setInputData(workDataOf(WebDeliveryWorker.KEY_DEDUPE to key))
-            .build()
+    fun createDrainRequest(): OneTimeWorkRequest = OneTimeWorkRequestBuilder<WebDeliveryWorker>()
+        .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+        .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
+        .build()
 
-    fun enqueue(context: Context, key: String) {
-        val workManager = WorkManager.getInstance(context)
-        workManager.enqueueUniqueWork("web-expire-$key", ExistingWorkPolicy.REPLACE, createExpiryRequest(key))
-        workManager.enqueueUniqueWork("web-$key", ExistingWorkPolicy.KEEP, createUploadRequest(key))
-    }
-}
-
-class WebExpiryWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
-    override suspend fun doWork(): Result {
-        inputData.getString(KEY_DEDUPE)?.let { key ->
-            WebDeliveryRepository(ForwardDatabase.get(applicationContext)).discardIfExpired(key)
-        }
-        return Result.success()
+    fun enqueue(context: Context) {
+        WorkManager.getInstance(context)
+            .enqueueUniqueWork(DRAIN_WORK, ExistingWorkPolicy.KEEP, createDrainRequest())
     }
 
-    companion object {
-        const val KEY_DEDUPE = "dedupeKey"
+    fun cancel(context: Context) {
+        WorkManager.getInstance(context).cancelUniqueWork(DRAIN_WORK).result.get()
     }
 }

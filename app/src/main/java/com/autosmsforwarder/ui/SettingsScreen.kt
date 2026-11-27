@@ -42,7 +42,6 @@ import com.autosmsforwarder.settings.MatchMode
 import com.autosmsforwarder.settings.SendDelay
 
 data class SettingsActions(
-    val onBack: () -> Unit = {},
     val onForwardingEnabled: (Boolean) -> Unit = {},
     val onTargetNumber: (String) -> Unit = {},
     val onSendDelay: (SendDelay) -> Unit = {},
@@ -59,12 +58,11 @@ data class SettingsActions(
 )
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit = {}, settingsViewModel: SettingsViewModel = viewModel()) {
+fun SettingsScreen(settingsViewModel: SettingsViewModel = viewModel()) {
     val state by settingsViewModel.state.collectAsState()
     SettingsContent(
         state,
         SettingsActions(
-            onBack = onBack,
             onForwardingEnabled = settingsViewModel::setForwardingEnabled,
             onTargetNumber = settingsViewModel::setTargetNumber,
             onSendDelay = settingsViewModel::setSendDelay,
@@ -100,7 +98,6 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions) {
                 modifier = Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                TextButton(onClick = actions.onBack) { Text("Back") }
                 Text("Settings", style = MaterialTheme.typography.headlineMedium)
                 if (!state.loaded) {
                     Text("Loading settings…")
@@ -154,7 +151,7 @@ fun SettingsContent(state: SettingsUiState, actions: SettingsActions) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Text("Web delivery makes one attempt. Offline or failed requests are dropped.", style = MaterialTheme.typography.bodySmall)
+                Text("Messages are queued on this phone (newest 50, up to 7 days) and sent when the network is available. A server error response is not retried. Turning Web archive off deletes the queue.", style = MaterialTheme.typography.bodySmall)
                 OutlinedTextField(
                     value = state.appSourcePhoneNumber,
                     onValueChange = actions.onAppSourcePhoneNumber,

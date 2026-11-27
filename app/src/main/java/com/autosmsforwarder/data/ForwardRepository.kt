@@ -89,14 +89,12 @@ class ForwardRepository(
 
     suspend fun clearLog(): List<String> = database.withTransaction {
         val pendingKeys = database.pendingDao().allKeys()
-        val webKeys = database.webDeliveryDao().allKeys()
         val legacyKeys = database.legacyArchiveWorkDao().allKeys()
         database.pendingDao().deleteAll()
-        database.webDeliveryDao().deleteAll()
-        database.webLogDao().deleteAll()
+        database.webLogDao().deleteFinished()
         database.legacyArchiveWorkDao().deleteAll()
         database.logDao().deleteAll()
-        (pendingKeys + webKeys + legacyKeys).distinct()
+        (pendingKeys + legacyKeys).distinct()
     }
 
     suspend fun purgeExpired(nowMillis: Long) = database.withTransaction {

@@ -4,7 +4,6 @@ import android.content.Context
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.work.Data
 import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
@@ -12,7 +11,6 @@ import androidx.work.testing.TestListenableWorkerBuilder
 import com.autosmsforwarder.data.ForwardDatabase
 import com.autosmsforwarder.data.ForwardRepository
 import com.autosmsforwarder.data.WebDeliveryRepository
-import com.autosmsforwarder.data.WebStatus
 import com.autosmsforwarder.domain.ForwardStatus
 import com.autosmsforwarder.domain.IncomingMessage
 import com.autosmsforwarder.receiver.ForwardRouteProcessor
@@ -21,7 +19,6 @@ import com.autosmsforwarder.settings.MatchMode
 import com.autosmsforwarder.settings.AppSettings
 import com.autosmsforwarder.settings.RouteConfiguration
 import com.autosmsforwarder.settings.SendDelay
-import com.autosmsforwarder.worker.WebConnectivityChecker
 import com.autosmsforwarder.worker.WebArchiveUploader
 import com.autosmsforwarder.worker.WebDeliveryWorker
 import kotlinx.coroutines.runBlocking
@@ -56,14 +53,14 @@ class WebRouteProcessorTest {
         database = Room.inMemoryDatabaseBuilder(
             ApplicationProvider.getApplicationContext(), ForwardDatabase::class.java
         ).build()
-        webRepository = WebDeliveryRepository(database, "session", { now })
+        webRepository = WebDeliveryRepository(database, { now })
         forwardProcessor = ForwardRouteProcessor(ForwardRepository(database))
     }
 
     @After fun tearDown() = database.close()
 
     @Test fun webOnlyMessageStoresOriginalBodyWithoutForwardLog() = runBlocking {
-        val processor = WebRouteProcessor(webRepository, WebConnectivityChecker { true })
+        val processor = WebRouteProcessor(webRepository)
         assertNull(forwardProcessor.recordIfMatched(message, config))
         val key = processor.recordIfMatched(message, config)!!
         assertEquals(message.body, database.webDeliveryDao().find(key)?.body)
@@ -75,19 +72,16 @@ class WebRouteProcessorTest {
         val fromTarget = message.copy(sender = config.targetNumber)
         val forwardConfig = config.copy(forwardMatchMode = MatchMode.ALL)
         val forward = forwardProcessor.recordIfMatched(fromTarget, forwardConfig)!!
-        val web = WebRouteProcessor(webRepository, WebConnectivityChecker { true })
+        val web = WebRouteProcessor(webRepository)
             .recordIfMatched(fromTarget, forwardConfig)!!
         assertEquals(ForwardStatus.SKIPPED_LOOP, database.logDao().find(forward.dedupeKey)?.status)
         assertEquals(fromTarget.body, database.webDeliveryDao().find(web)?.body)
     }
 
-    @Test fun offlineDisabledAndUnmatchedWebMessagesStoreNothing() = runBlocking {
-        assertNull(WebRouteProcessor(webRepository, WebConnectivityChecker { false }).recordIfMatched(message, config))
-        val skippedKey = com.autosmsforwarder.domain.IdempotencyKey.create(message.sender, message.receivedAtMillis, message.body)
-        assertEquals(WebStatus.SKIPPED, database.webLogDao().find(skippedKey)?.status)
-        val online = WebRouteProcessor(webRepository, WebConnectivityChecker { true })
-        assertNull(online.recordIfMatched(message, config.copy(webEnabled = false)))
-        assertNull(online.recordIfMatched(message.copy(body = "unrelated"), config))
+    @Test fun disabledAndUnmatchedWebMessagesStoreNothing() = runBlocking {
+        val processor = WebRouteProcessor(webRepository)
+        assertNull(processor.recordIfMatched(message, config.copy(webEnabled = false)))
+        assertNull(processor.recordIfMatched(message.copy(body = "unrelated"), config))
         assertTrue(database.webDeliveryDao().allKeys().isEmpty())
         assertEquals(0, database.logDao().count())
     }
@@ -95,18 +89,16 @@ class WebRouteProcessorTest {
     @Test fun pendingOrFailedForwardDoesNotDelayOrChangeWebAttempt() = runBlocking {
         val both = config.copy(forwardMatchMode = MatchMode.ALL, webMatchMode = MatchMode.ALL)
         val forwardRepository = ForwardRepository(database)
-        val webProcessor = WebRouteProcessor(webRepository, WebConnectivityChecker { true })
+        val webProcessor = WebRouteProcessor(webRepository)
         val received = forwardProcessor.recordIfMatched(message, both)!!
-        val webKey = webProcessor.recordIfMatched(message, both)!!
+        webProcessor.recordIfMatched(message, both)!!
         assertEquals(ForwardStatus.PENDING, forwardRepository.findLog(received.dedupeKey)?.status)
         val uploads = mutableListOf<String>()
         val worker = TestListenableWorkerBuilder<WebDeliveryWorker>(ApplicationProvider.getApplicationContext())
-            .setInputData(Data.Builder().putString(WebDeliveryWorker.KEY_DEDUPE, webKey).build())
             .setWorkerFactory(object : WorkerFactory() {
                 override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters): ListenableWorker =
                     WebDeliveryWorker(appContext, workerParameters, webRepository,
                         WebArchiveUploader { stored, _ -> uploads += stored.body; 201 },
-                        WebConnectivityChecker { true },
                         { AppSettings(webEnabled = true, archiveWriteToken = "token") })
             }).build()
 

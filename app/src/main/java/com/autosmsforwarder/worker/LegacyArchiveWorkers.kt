@@ -12,3 +12,8 @@ class ArchiveWorker(context: Context, parameters: WorkerParameters) : CoroutineW
 class ArchiveSweepWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
     override suspend fun doWork(): Result = Result.success()
 }
+
+/** V1.4 scheduled these 5-minute expiry jobs; the queue now owns expiry, so they do nothing. */
+class WebExpiryWorker(context: Context, parameters: WorkerParameters) : CoroutineWorker(context, parameters) {
+    override suspend fun doWork(): Result = Result.success()
+}

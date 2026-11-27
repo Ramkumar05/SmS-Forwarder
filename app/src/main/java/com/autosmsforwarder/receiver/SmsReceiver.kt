@@ -14,7 +14,6 @@ import com.autosmsforwarder.domain.SmsPart
 import com.autosmsforwarder.settings.ForwardRouteLock
 import com.autosmsforwarder.settings.SettingsRepository
 import com.autosmsforwarder.worker.ForwardWorkRequestFactory
-import com.autosmsforwarder.worker.AndroidWebConnectivityChecker
 import com.autosmsforwarder.worker.WebDeliveryScheduler
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -42,13 +41,12 @@ class SmsReceiver : BroadcastReceiver() {
                     val config = settings.routeConfiguration()
                     val processor = ForwardRouteProcessor(ForwardRepository(ForwardDatabase.get(appContext)))
                     val webProcessor = WebRouteProcessor(
-                        WebDeliveryRepository(ForwardDatabase.get(appContext)),
-                        AndroidWebConnectivityChecker(appContext)
+                        WebDeliveryRepository(ForwardDatabase.get(appContext))
                     )
                     messages.forEach { message ->
                         try {
-                            webProcessor.recordIfMatched(message, config)?.let { key ->
-                                WebDeliveryScheduler.enqueue(appContext, key)
+                            webProcessor.recordIfMatched(message, config)?.let {
+                                WebDeliveryScheduler.enqueue(appContext)
                             }
                         } catch (cancelled: CancellationException) {
                             throw cancelled

@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import com.autosmsforwarder.worker.RetentionWorker
 import com.autosmsforwarder.data.ForwardDatabase
 import com.autosmsforwarder.data.WebDeliveryRepository
+import com.autosmsforwarder.worker.WebDeliveryScheduler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -28,12 +29,10 @@ class ForwardApplication : Application(), Configuration.Provider {
         workManager.cancelUniqueWork("archive-sweep")
         workManager.cancelUniqueWork("archive-sweep-now")
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val cleanup = WebDeliveryRepository(ForwardDatabase.get(this@ForwardApplication)).cleanupAtStartup()
-            cleanup.web.forEach { key ->
-                workManager.cancelUniqueWork("web-$key").result.get()
-                workManager.cancelUniqueWork("web-expire-$key").result.get()
-            }
-            cleanup.legacy.forEach { key -> workManager.cancelUniqueWork("archive-$key").result.get() }
+            val repository = WebDeliveryRepository(ForwardDatabase.get(this@ForwardApplication))
+            val legacyKeys = repository.cleanupAtStartup()
+            legacyKeys.forEach { key -> workManager.cancelUniqueWork("archive-$key").result.get() }
+            if (repository.hasQueued()) WebDeliveryScheduler.enqueue(this@ForwardApplication)
         }
     }
 }
